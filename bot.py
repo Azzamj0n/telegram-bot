@@ -31,9 +31,12 @@ sp = spotipy.Spotify(auth_manager=auth_manager)
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Привет! Напиши название песни 🎵")
 
-# ПОИСК ПЕСЕН (заменяем всю функцию)
 async def search_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.message.text
+
+    # Очистка старых треков
+    context.user_data["tracks"] = []
+
     await update.message.reply_text("Ищу варианты... 🔍")
 
     results = sp.search(q=query, type="track", limit=5)
@@ -43,7 +46,6 @@ async def search_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Ничего не найдено 😔")
         return
 
-    # Обновляем треки для нового поиска
     context.user_data["tracks"] = tracks
 
     keyboard = [
@@ -51,8 +53,9 @@ async def search_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for i, track in enumerate(tracks)
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("Выбери нужную песню:", reply_markup=reply_markup)
 
+    # Отправка нового сообщения с кнопками
+    await update.message.reply_text("Выбери нужную песню:", reply_markup=reply_markup)
 # ОБРАБОТКА НАЖАТИЙ (заменяем всю функцию)
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
