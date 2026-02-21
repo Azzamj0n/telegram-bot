@@ -14,7 +14,7 @@ def search_music(query):
     params = {
         "client_id": JAMENDO_API,
         "format": "json",
-        "limit": 10,
+        "limit": 1,
         "namesearch": query,
         "audioformat": "mp32"
     }
