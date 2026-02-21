@@ -1,30 +1,45 @@
 import os
-from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+import requests
+from telegram import Update
+from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, filters, ContextTypes
 
 TOKEN = os.getenv("TOKEN")
+JAMENDO_API = os.getenv("JAMENDO_API")
 
-# Команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [["Привет", "Извини"], ["Помощь"]]
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-    await update.message.reply_text("Привет! Я бот, могу извиняться 😊", reply_markup=reply_markup)
+    await update.message.reply_text("Напиши название песни 🎵")
 
-# Любое сообщение
-async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.lower()
+def search_music(query):
+    url = "https://api.jamendo.com/v3.0/tracks/"
+    params = {
+        "client_id": JAMENDO_API,
+        "format": "json",
+        "limit": 1,
+        "namesearch": query,
+        "audioformat": "mp32"
+    }
 
-    if "извини" in text or "прости" in text:
-        await update.message.reply_text("Ничего страшного! Всё в порядке 😉")
-    elif "привет" in text:
-        await update.message.reply_text("Привет! Рад тебя видеть 😎")
-    elif "помощь" in text:
-        await update.message.reply_text("Напиши 'Извини', и я отвечу вежливо 😇")
+    response = requests.get(url, params=params)
+    data = response.json()
+
+    if data["results"]:
+        return data["results"][0]["audio"]
+    return None
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.message.text
+    await update.message.reply_text("Ищу песню... 🔍")
+
+    audio_url = search_music(query)
+
+    if audio_url:
+        await update.message.reply_audio(audio=audio_url)
     else:
-        await update.message.reply_text("Я не понял, но всё равно тебе прощаю 😅")
+        await update.message.reply_text("Песня не найдена 😔")
 
 app = ApplicationBuilder().token(TOKEN).build()
+
 app.add_handler(CommandHandler("start", start))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
 app.run_polling()
