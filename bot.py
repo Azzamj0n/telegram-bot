@@ -162,7 +162,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def addcoins(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     # Здесь нужно прописать свой ID админа
-    admin_id = 123456789
+    admin_id = 7037545654
     if user_id != admin_id:
         await update.message.reply_text("❌ Ты не админ!")
         return
