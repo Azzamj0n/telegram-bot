@@ -11,7 +11,6 @@ CARD_NUMBER = "4444888814271817"
 # ====== БАЗА ДАННЫХ ======
 conn = sqlite3.connect("game.db", check_same_thread=False)
 cursor = conn.cursor()
-
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS users (
     user_id INTEGER PRIMARY KEY,
@@ -27,19 +26,13 @@ def get_user(user_id, username):
     user = cursor.fetchone()
     if not user:
         name = username if username else "Пользователь"
-        cursor.execute(
-            "INSERT INTO users VALUES (?, ?, ?)",
-            (user_id, name, 100)
-        )
+        cursor.execute("INSERT INTO users VALUES (?, ?, ?)", (user_id, name, 100))
         conn.commit()
         return (user_id, name, 100)
     return user
 
 def update_balance(user_id, new_balance):
-    cursor.execute(
-        "UPDATE users SET balance = ? WHERE user_id = ?",
-        (new_balance, user_id)
-    )
+    cursor.execute("UPDATE users SET balance = ? WHERE user_id = ?", (new_balance, user_id))
     conn.commit()
 
 # ====== МЕНЮ ======
@@ -58,7 +51,7 @@ def difficulty_menu():
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 # ====== ИГРА ======
-games = {}
+games = {}  # {user_id: {"number":int, "multiplier":float, "bet":int, "attempts":int}}
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -84,30 +77,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == "🏆 Лидеры":
         cursor.execute("SELECT username, balance FROM users ORDER BY balance DESC LIMIT 5")
         top = cursor.fetchall()
-        if not top:
-            await update.message.reply_text("Нет игроков.", reply_markup=main_menu())
-            return
-        msg = "🏆 Топ игроков:\n"
-        for i, (name, bal) in enumerate(top, 1):
-            msg += f"{i}. {name} — {bal} 💰\n"
-        await update.message.reply_text(msg, reply_markup=main_menu())
+        msg = "🏆 Топ игроков:\n" + "\n".join([f"{i+1}. {name} — {bal} 💰" for i, (name, bal) in enumerate(top)])
+        await update.message.reply_text(msg or "Нет игроков.", reply_markup=main_menu())
         return
 
     if text == "💳 Пополнить баланс":
         await update.message.reply_text(
-            f"💳 Чтобы пополнить баланс, переведи деньги на карту:\n"
-            f"{CARD_NUMBER}\n"
-            "1₽ = 1 монета\n"
-            "После перевода просто пришли скрин администратору, он добавит монеты вручную.",
+            f"💳 Переведи деньги на карту:\n{CARD_NUMBER}\n1₽ = 1 монета\n"
+            "После перевода пришли скрин администратору.",
             reply_markup=main_menu()
         )
         return
 
     if text == "🎮 Играть":
-        await update.message.reply_text(
-            "Выбери уровень сложности:",
-            reply_markup=difficulty_menu()
-        )
+        await update.message.reply_text("Выбери уровень сложности:", reply_markup=difficulty_menu())
         return
 
     if text == "⬅️ Назад":
@@ -119,12 +102,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user_id in games:
             await update.message.reply_text("Ты уже играешь!")
             return
-        if text == "🟢 Лёгкий 1.5x":
-            games[user_id] = {"number": random.randint(1, 50), "multiplier": 1.5}
-        elif text == "🟡 Средний 2x":
-            games[user_id] = {"number": random.randint(1, 100), "multiplier": 2}
-        else:
-            games[user_id] = {"number": random.randint(1, 300), "multiplier": 3}
+        number = random.randint(1, 50 if text=="🟢 Лёгкий 1.5x" else 100 if text=="🟡 Средний 2x" else 300)
+        multiplier = 1.5 if text=="🟢 Лёгкий 1.5x" else 2 if text=="🟡 Средний 2x" else 3
+        games[user_id] = {"number": number, "multiplier": multiplier, "attempts": 10}
         await update.message.reply_text("Введите ставку (макс 10000 монет):")
         return
 
@@ -142,24 +122,46 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             update_balance(user_id, balance - bet)
             await update.message.reply_text("Я загадал число. Угадывай!")
             return
+
         elif user_id in games and "bet" in games[user_id]:
             guess = int(text)
             game = games[user_id]
+            game["attempts"] -= 1
+
             if guess < game["number"]:
-                await update.message.reply_text("Больше 📈")
+                await update.message.reply_text(f"Больше 📈 | Осталось попыток: {game['attempts']}")
             elif guess > game["number"]:
-                await update.message.reply_text("Меньше 📉")
+                await update.message.reply_text(f"Меньше 📉 | Осталось попыток: {game['attempts']}")
             else:
                 win = int(game["bet"] * game["multiplier"])
-                cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
-                current_balance = cursor.fetchone()[0]
+                current_balance = cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,)).fetchone()[0]
                 update_balance(user_id, current_balance + win)
-                await update.message.reply_text(
-                    f"🎉 Победа!\nВыигрыш: {win} 💰\nБаланс: {current_balance + win}",
-                    reply_markup=main_menu()
-                )
+                await update.message.reply_text(f"🎉 Победа!\nВыигрыш: {win} 💰\nБаланс: {current_balance + win}", reply_markup=main_menu())
+                del games[user_id]
+                return
+
+            if game["attempts"] <= 0:
+                await update.message.reply_text(f"❌ Попытки закончились. Ставка сгорела!", reply_markup=main_menu())
                 del games[user_id]
             return
+
+# ===== ОБРАБОТКА СКРИНА =====
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    username = update.effective_user.username
+    user = get_user(user_id, username)
+
+    await update.message.reply_text(
+        "✅ Ваша заявка принята! Админ пополнит баланс в течение 3 часов.",
+        reply_markup=main_menu()
+    )
+
+    photo_file = update.message.photo[-1].file_id
+    await context.bot.send_photo(
+        chat_id=ADMIN_ID,
+        photo=photo_file,
+        caption=f"Новая заявка на пополнение:\nID игрока: {user_id}\nНик: {user[1]}"
+    )
 
 # ===== КОМАНДЫ АДМИНА =====
 async def addcoins(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -177,8 +179,7 @@ async def addcoins(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not user:
         await update.message.reply_text("Игрок не найден")
         return
-    new_balance = user[0] + amount
-    update_balance(target_id, new_balance)
+    update_balance(target_id, user[0] + amount)
     await update.message.reply_text(f"✅ Добавлено {amount} монет пользователю {target_id}")
 
 # ===== RUN =====
@@ -186,4 +187,5 @@ app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("addcoins", addcoins))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
 app.run_polling()
