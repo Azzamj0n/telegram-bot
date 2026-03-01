@@ -98,7 +98,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"💳 Чтобы пополнить баланс, переведи деньги на карту:\n"
             f"{CARD_NUMBER}\n"
             "1₽ = 1 монета\n"
-            "После перевода отправь скрин с текстом «Подтвердить»",
+            "После перевода просто пришли скрин администратору, он добавит монеты вручную.",
             reply_markup=main_menu()
         )
         return
@@ -160,11 +160,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 del games[user_id]
             return
-
-    # ===== Подтверждение пополнения (на кириллице) =====
-    if text.lower() == "подтвердить":
-        await update.message.reply_text("Спасибо! Админ проверит ваш платёж и добавит монеты.")
-        return
 
 # ===== КОМАНДЫ АДМИНА =====
 async def addcoins(update: Update, context: ContextTypes.DEFAULT_TYPE):
