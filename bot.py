@@ -181,14 +181,9 @@ async def addcoins(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_balance(target_id, new_balance)
     await update.message.reply_text(f"✅ Добавлено {amount} монет пользователю {target_id}")
 
-# ===== Команда /мойid =====
-async def мойid(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(f"Твой ID: {update.effective_user.id}")
-
 # ===== RUN =====
 app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("addcoins", addcoins))
-app.add_handler(CommandHandler("мойid", мойid))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 app.run_polling()
