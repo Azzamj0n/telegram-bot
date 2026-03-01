@@ -3,11 +3,12 @@ import sqlite3
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
+# ====== ДАННЫЕ ======
 TOKEN = "8228632825:AAFwJ9ZYJtj8DhmbO4wTA3CdiAtYhcDIkoM"
 ADMIN_ID = 7037545654
 CARD_NUMBER = "4444888814271817"
 
-# ================= DATABASE =================
+# ====== БАЗА ДАННЫХ ======
 conn = sqlite3.connect("game.db", check_same_thread=False)
 cursor = conn.cursor()
 
@@ -20,7 +21,7 @@ CREATE TABLE IF NOT EXISTS users (
 """)
 conn.commit()
 
-# ================= HELPERS =================
+# ====== ХЕЛПЕРЫ ======
 def get_user(user_id, username):
     cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
     user = cursor.fetchone()
@@ -41,7 +42,7 @@ def update_balance(user_id, new_balance):
     )
     conn.commit()
 
-# ================= MENUS =================
+# ====== МЕНЮ ======
 def main_menu():
     keyboard = [
         ["🎮 Играть", "💰 Баланс"],
@@ -56,7 +57,7 @@ def difficulty_menu():
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-# ================= GAME =================
+# ====== ИГРА ======
 games = {}
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -75,7 +76,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = get_user(user_id, username)
     balance = user[2]
 
-    # ================= MENU BUTTONS =================
+    # ===== МЕНЮ =====
     if text == "💰 Баланс":
         await update.message.reply_text(f"💰 Твой баланс: {balance}", reply_markup=main_menu())
         return
@@ -97,7 +98,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"💳 Чтобы пополнить баланс, переведи деньги на карту:\n"
             f"{CARD_NUMBER}\n"
             "1₽ = 1 монета\n"
-            "После перевода отправь скрин командой /подтвердить",
+            "После перевода отправь скрин с текстом «Подтвердить»",
             reply_markup=main_menu()
         )
         return
@@ -113,12 +114,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Возврат в главное меню", reply_markup=main_menu())
         return
 
-    # ================= DIFFICULTY SELECT =================
+    # ===== Выбор сложности =====
     if text in ["🟢 Лёгкий 1.5x", "🟡 Средний 2x", "🔴 Сложный 3x"]:
         if user_id in games:
             await update.message.reply_text("Ты уже играешь!")
             return
-        # ставим сложность и multiplier
         if text == "🟢 Лёгкий 1.5x":
             games[user_id] = {"number": random.randint(1, 50), "multiplier": 1.5}
         elif text == "🟡 Средний 2x":
@@ -128,7 +128,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Введите ставку (макс 10000 монет):")
         return
 
-    # ================= BET & GUESS =================
+    # ===== Ставка и угадайка =====
     if text.isdigit():
         if user_id in games and "bet" not in games[user_id]:
             bet = int(text)
@@ -161,7 +161,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 del games[user_id]
             return
 
-# ================= ADMIN COMMANDS =================
+    # ===== Подтверждение пополнения (на кириллице) =====
+    if text.lower() == "подтвердить":
+        await update.message.reply_text("Спасибо! Админ проверит ваш платёж и добавит монеты.")
+        return
+
+# ===== КОМАНДЫ АДМИНА =====
 async def addcoins(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id != ADMIN_ID:
@@ -181,17 +186,14 @@ async def addcoins(update: Update, context: ContextTypes.DEFAULT_TYPE):
     update_balance(target_id, new_balance)
     await update.message.reply_text(f"✅ Добавлено {amount} монет пользователю {target_id}")
 
-async def myid(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ===== Команда /мойid =====
+async def мойid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Твой ID: {update.effective_user.id}")
 
-async def confirm_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Спасибо! Админ проверит ваш платёж и добавит монеты.")
-
-# ================= RUN =================
+# ===== RUN =====
 app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("addcoins", addcoins))
-app.add_handler(CommandHandler("myid", myid))
-app.add_handler(CommandHandler("подтвердить", confirm_payment))
+app.add_handler(CommandHandler("мойid", мойid))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 app.run_polling()
