@@ -1,125 +1,132 @@
 import random
-from telegram import Update, ReplyKeyboardMarkup
+from telegram import (
+    Update,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton
+)
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
+    CallbackQueryHandler,
     MessageHandler,
     ContextTypes,
     filters
 )
 
 TOKEN = "8228632825:AAFwJ9ZYJtj8DhmbO4wTA3CdiAtYhcDIkoM"
+
+users = {}
 games = {}
-leaderboard = {}
-tournament_scores = {}
 
 def main_menu():
     keyboard = [
-        ["🎮 Играть"],
-        ["🏆 Таблица лидеров"],
-        ["🏟 Турнир"],
-        ["⭐ Мой рейтинг"]
+        [InlineKeyboardButton("🎮 Играть", callback_data="play")],
+        [InlineKeyboardButton("💰 Баланс", callback_data="balance")],
+        [InlineKeyboardButton("🏆 Лидеры", callback_data="leaders")]
     ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    return InlineKeyboardMarkup(keyboard)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    if user_id not in users:
+        users[user_id] = 100  # стартовые монеты
+
     await update.message.reply_text(
-        "Добро пожаловать в игру 🎯 Угадай число!",
+        "🎯 Добро пожаловать в игру!\n"
+        f"💰 Твой баланс: {users[user_id]} монет",
         reply_markup=main_menu()
     )
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    text = update.message.text
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
 
-    if text == "🎮 Играть":
+    if query.data == "play":
         keyboard = [
-            ["🟢 Легкий (1-50)"],
-            ["🟡 Средний (1-100)"],
-            ["🔴 Сложный (1-500)"]
+            [InlineKeyboardButton("10 💰", callback_data="bet_10")],
+            [InlineKeyboardButton("20 💰", callback_data="bet_20")],
+            [InlineKeyboardButton("50 💰", callback_data="bet_50")]
         ]
-        await update.message.reply_text(
-            "Выбери уровень:",
-            reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        await query.message.reply_text(
+            "Выбери ставку:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
-        return
 
-    if "Легкий" in text:
-        number = random.randint(1, 50)
-    elif "Средний" in text:
-        number = random.randint(1, 100)
-    elif "Сложный" in text:
-        number = random.randint(1, 500)
-    elif text == "🏆 Таблица лидеров":
-        if not leaderboard:
-            await update.message.reply_text("Пока нет результатов.", reply_markup=main_menu())
+    elif query.data.startswith("bet_"):
+        bet = int(query.data.split("_")[1])
+
+        if users[user_id] < bet:
+            await query.message.reply_text("❌ Недостаточно монет!")
             return
-        top = sorted(leaderboard.items(), key=lambda x: x[1])[:5]
-        message = "🏆 Топ игроков:\n"
-        for i, (uid, score) in enumerate(top, 1):
-            message += f"{i}. ID {uid} — {score} попыток\n"
-        await update.message.reply_text(message, reply_markup=main_menu())
-        return
 
-    elif text == "🏟 Турнир":
-        tournament_scores[user_id] = 0
+        users[user_id] -= bet
         number = random.randint(1, 100)
-        games[user_id] = {"number": number, "attempts": 0, "tournament": True}
-        await update.message.reply_text("Турнир начался! Угадай число 1-100")
+
+        games[user_id] = {
+            "number": number,
+            "bet": bet
+        }
+
+        await query.message.reply_text(
+            f"🎲 Я загадал число от 1 до 100.\n"
+            f"Ставка: {bet} 💰\n"
+            "Попробуй угадать!"
+        )
+
+    elif query.data == "balance":
+        await query.message.reply_text(
+            f"💰 Твой баланс: {users[user_id]} монет",
+            reply_markup=main_menu()
+        )
+
+    elif query.data == "leaders":
+        if not users:
+            await query.message.reply_text("Пока нет игроков.")
+            return
+
+        top = sorted(users.items(), key=lambda x: x[1], reverse=True)[:5]
+        text = "🏆 Топ игроков по балансу:\n"
+        for i, (uid, coins) in enumerate(top, 1):
+            text += f"{i}. ID {uid} — {coins} 💰\n"
+
+        await query.message.reply_text(text)
+
+async def guess(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+
+    if user_id not in games:
         return
 
-    elif text == "⭐ Мой рейтинг":
-        if user_id in leaderboard:
-            await update.message.reply_text(
-                f"Твой лучший результат: {leaderboard[user_id]} попыток",
-                reply_markup=main_menu()
-            )
-        else:
-            await update.message.reply_text(
-                "Ты ещё не играл!",
-                reply_markup=main_menu()
-            )
+    try:
+        guess = int(update.message.text)
+    except:
+        await update.message.reply_text("Введите число!")
         return
 
+    secret = games[user_id]["number"]
+    bet = games[user_id]["bet"]
+
+    if guess < secret:
+        await update.message.reply_text("Больше 📈")
+    elif guess > secret:
+        await update.message.reply_text("Меньше 📉")
     else:
-        if user_id not in games:
-            return
-
-        try:
-            guess = int(text)
-        except:
-            await update.message.reply_text("Введите число!")
-            return
-
-        games[user_id]["attempts"] += 1
-        secret = games[user_id]["number"]
-
-        if guess < secret:
-            await update.message.reply_text("Больше 📈")
-        elif guess > secret:
-            await update.message.reply_text("Меньше 📉")
-        else:
-            attempts = games[user_id]["attempts"]
-
-            if games[user_id].get("tournament"):
-                tournament_scores[user_id] += 1
-                await update.message.reply_text(
-                    f"🏟 Очко засчитано! Всего: {tournament_scores[user_id]}"
-                )
-            else:
-                if user_id not in leaderboard or attempts < leaderboard[user_id]:
-                    leaderboard[user_id] = attempts
-
-                await update.message.reply_text(
-                    f"🎉 Угадал за {attempts} попыток!",
-                    reply_markup=main_menu()
-                )
-
-            del games[user_id]
+        win = bet * 2
+        users[user_id] += win
+        await update.message.reply_text(
+            f"🎉 Ты выиграл!\n"
+            f"+{win} 💰\n"
+            f"Новый баланс: {users[user_id]}",
+            reply_markup=main_menu()
+        )
+        del games[user_id]
 
 app = ApplicationBuilder().token(TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+app.add_handler(CallbackQueryHandler(button_handler))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, guess))
 
 app.run_polling()
