@@ -8,8 +8,7 @@ from telegram.ext import (
     filters
 )
 
-TOKEN = "ТВОЙ_ТОКЕН"
-
+TOKEN = "8228632825:AAFwJ9ZYJtj8DhmbO4wTA3CdiAtYhcDIkoM"
 games = {}
 leaderboard = {}
 tournament_scores = {}
